@@ -6,8 +6,8 @@
 
   // ── State ───────────────────────────────────────────────────
   let state = {
+    role: null,
     accessToken: null,
-    sessionToken: null,
     offerCountry: "JP",
     billingCountry: "ID",
     mode: "hosted",
@@ -15,7 +15,130 @@
 
   const $ = id => document.getElementById(id);
 
-  // ── Offer Country Toggle ───────────────────────────────────
+  // ══════════════════════════════════════════════════════════════
+  // AUTH
+  // ══════════════════════════════════════════════════════════════
+  async function checkAuth() {
+    try {
+      const res = await fetch("/api/auth/me");
+      const data = await res.json();
+      if (data.authenticated) {
+        state.role = data.role;
+        showApp();
+      } else {
+        showLogin();
+      }
+    } catch (e) { showLogin(); }
+  }
+
+  function showLogin() {
+    $("loginScreen").classList.remove("hidden");
+    $("mainApp").classList.add("hidden");
+    $("loginPassword").focus();
+  }
+
+  function showApp() {
+    $("loginScreen").classList.add("hidden");
+    $("mainApp").classList.remove("hidden");
+
+    // Show admin button for admins
+    if (state.role === "admin") {
+      $("btnAdminPanel").classList.remove("hidden");
+      loadAdminConfig();
+    }
+  }
+
+  // Login
+  $("btnLogin").onclick = doLogin;
+  $("loginPassword").onkeydown = (e) => { if (e.key === "Enter") doLogin(); };
+
+  async function doLogin() {
+    const pw = $("loginPassword").value.trim();
+    if (!pw) return;
+
+    $("btnLogin").disabled = true;
+    try {
+      const res = await fetch("/api/auth/login", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ password: pw }),
+      });
+      const data = await res.json();
+      $("btnLogin").disabled = false;
+
+      if (!res.ok || !data.success) {
+        $("loginError").textContent = data.error || "Invalid password";
+        $("loginError").classList.remove("hidden");
+        return;
+      }
+
+      state.role = data.role;
+      $("loginError").classList.add("hidden");
+      $("loginPassword").value = "";
+      showApp();
+    } catch (e) {
+      $("btnLogin").disabled = false;
+      $("loginError").textContent = "Connection error";
+      $("loginError").classList.remove("hidden");
+    }
+  }
+
+  // Logout
+  window.doLogout = async function () {
+    await fetch("/api/auth/logout", { method: "POST" });
+    state.role = null;
+    showLogin();
+  };
+
+  // ══════════════════════════════════════════════════════════════
+  // ADMIN
+  // ══════════════════════════════════════════════════════════════
+  window.toggleAdmin = function () {
+    $("adminPanel").classList.toggle("hidden");
+  };
+
+  async function loadAdminConfig() {
+    try {
+      const res = await fetch("/api/admin/config");
+      const data = await res.json();
+      $("adminProxy").value = data.globalProxy || "";
+    } catch (e) {}
+  }
+
+  window.saveProxy = async function () {
+    const proxy = $("adminProxy").value.trim();
+    try {
+      const res = await fetch("/api/admin/proxy", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ proxy }),
+      });
+      const data = await res.json();
+      $("proxyStatus").textContent = proxy ? "✅ Proxy saved" : "✅ Proxy cleared";
+      $("proxyStatus").style.color = "var(--green)";
+      setTimeout(() => { $("proxyStatus").textContent = ""; }, 3000);
+    } catch (e) {
+      $("proxyStatus").textContent = "❌ Error saving";
+      $("proxyStatus").style.color = "var(--error)";
+    }
+  };
+
+  window.savePasswords = async function () {
+    const adminPw = $("newAdminPw").value.trim();
+    const userPw = $("newUserPw").value.trim();
+    if (!adminPw && !userPw) return;
+    try {
+      await fetch("/api/admin/passwords", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ adminPassword: adminPw || undefined, userPassword: userPw || undefined }),
+      });
+      $("newAdminPw").value = "";
+      $("newUserPw").value = "";
+      alert("✅ Passwords updated!");
+    } catch (e) { alert("Error!"); }
+  };
+
+  // ══════════════════════════════════════════════════════════════
+  // TOGGLES
+  // ══════════════════════════════════════════════════════════════
   $("offerToggle").querySelectorAll(".country-btn").forEach(b => {
     b.onclick = () => {
       $("offerToggle").querySelectorAll(".country-btn").forEach(x => x.classList.remove("active"));
@@ -24,7 +147,6 @@
     };
   });
 
-  // ── Billing Toggle ─────────────────────────────────────────
   $("billingToggle").querySelectorAll(".toggle-btn").forEach(b => {
     b.onclick = () => {
       $("billingToggle").querySelectorAll(".toggle-btn").forEach(x => x.classList.remove("active"));
@@ -33,7 +155,6 @@
     };
   });
 
-  // ── Mode Toggle ────────────────────────────────────────────
   $("modeToggle").querySelectorAll(".toggle-btn").forEach(b => {
     b.onclick = () => {
       $("modeToggle").querySelectorAll(".toggle-btn").forEach(x => x.classList.remove("active"));
@@ -46,14 +167,15 @@
   $("btnClear").onclick = () => {
     $("sessionInput").value = "";
     state.accessToken = null;
-    state.sessionToken = null;
     $("resultSection").classList.add("hidden");
     $("errorBar").classList.add("hidden");
     $("accountToast").classList.add("hidden");
     $("sessionInput").focus();
   };
 
-  // ── Generate ────────────────────────────────────────────────
+  // ══════════════════════════════════════════════════════════════
+  // GENERATE
+  // ══════════════════════════════════════════════════════════════
   $("btnGenerate").onclick = generate;
 
   async function generate() {
@@ -74,14 +196,12 @@
     if (!parseRes.success) return showError(parseRes.error || "Parse failed.");
 
     state.accessToken = parseRes.info.accessToken;
-    state.sessionToken = parseRes.info.sessionToken;
-
     showAccountToast(parseRes.info);
 
     $("loader").classList.remove("hidden");
     $("btnGenerate").disabled = true;
 
-    const proxy = $("proxyInput").value.trim() || null;
+    const userProxy = $("proxyInput").value.trim() || null;
 
     try {
       const res = await fetch("/api/generate-link", {
@@ -91,7 +211,7 @@
           offerCountry: state.offerCountry,
           billingCountry: state.billingCountry,
           mode: state.mode,
-          proxy: proxy,
+          proxy: userProxy,
         }),
       });
       const data = await res.json();
@@ -163,5 +283,8 @@
   }
 
   $("btnDismiss").onclick = () => $("errorBar").classList.add("hidden");
+
+  // ── Init ────────────────────────────────────────────────────
+  checkAuth();
 
 })();

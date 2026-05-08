@@ -21,7 +21,31 @@
     <div class="nebula nebula-2"></div>
   </div>
 
-  <div class="app-container">
+  <!-- ════════════════════════════════════════════ LOGIN SCREEN ════════ -->
+  <div class="app-container" id="loginScreen">
+    <div class="login-card">
+      <div class="logo" style="justify-content:center; margin-bottom:20px">
+        <div class="logo-icon">
+          <svg width="36" height="36" viewBox="0 0 24 24" fill="none"><rect x="3" y="3" width="18" height="18" rx="4" stroke="var(--red)" stroke-width="1.5"/><path d="M12 7v4l3 2" stroke="var(--red)" stroke-width="1.5" stroke-linecap="round"/></svg>
+        </div>
+        <div class="logo-text-group">
+          <div class="logo-title">DIAA STORE</div>
+          <div class="logo-sub">GPT PAY</div>
+        </div>
+      </div>
+      <div class="login-title">Enter Password</div>
+      <input type="password" id="loginPassword" class="login-input" placeholder="Password" autofocus />
+      <div class="login-error hidden" id="loginError"></div>
+      <button class="btn btn-primary" id="btnLogin" style="margin-top:12px">
+        <div class="btn-shimmer"></div>
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M15 3h4a2 2 0 012 2v14a2 2 0 01-2 2h-4"/><polyline points="10 17 15 12 10 7"/><line x1="15" y1="12" x2="3" y2="12"/></svg>
+        Login
+      </button>
+    </div>
+  </div>
+
+  <!-- ════════════════════════════════════════════ MAIN APP ════════════ -->
+  <div class="app-container hidden" id="mainApp">
     <!-- Header -->
     <header class="header">
       <div class="logo">
@@ -33,11 +57,49 @@
           <div class="logo-sub">GPT PAY</div>
         </div>
       </div>
-      <a href="https://chatgpt.com/api/auth/session" target="_blank" class="btn-session-link">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
-        Get Session
-      </a>
+      <div class="header-actions">
+        <button class="btn-session-link hidden" id="btnAdminPanel" onclick="toggleAdmin()">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12.22 2h-.44a2 2 0 00-2 2v.18a2 2 0 01-1 1.73l-.43.25a2 2 0 01-2 0l-.15-.08a2 2 0 00-2.73.73l-.22.38a2 2 0 00.73 2.73l.15.1a2 2 0 011 1.72v.51a2 2 0 01-1 1.74l-.15.09a2 2 0 00-.73 2.73l.22.38a2 2 0 002.73.73l.15-.08a2 2 0 012 0l.43.25a2 2 0 011 1.73V20a2 2 0 002 2h.44a2 2 0 002-2v-.18a2 2 0 011-1.73l.43-.25a2 2 0 012 0l.15.08a2 2 0 002.73-.73l.22-.39a2 2 0 00-.73-2.73l-.15-.08a2 2 0 01-1-1.74v-.5a2 2 0 011-1.74l.15-.09a2 2 0 00.73-2.73l-.22-.38a2 2 0 00-2.73-.73l-.15.08a2 2 0 01-2 0l-.43-.25a2 2 0 01-1-1.73V4a2 2 0 00-2-2z"/><circle cx="12" cy="12" r="3"/></svg>
+          Admin
+        </button>
+        <a href="https://chatgpt.com/api/auth/session" target="_blank" class="btn-session-link">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+          Get Session
+        </a>
+        <button class="btn-session-link" id="btnLogout" onclick="doLogout()" style="color:var(--error)">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+          Logout
+        </button>
+      </div>
     </header>
+
+    <!-- Admin Panel -->
+    <div class="admin-panel hidden" id="adminPanel">
+      <div class="admin-header">
+        <span class="admin-title">⚙️ Admin Panel</span>
+        <button class="toast-close" onclick="toggleAdmin()">&times;</button>
+      </div>
+      <div class="admin-row">
+        <label class="config-label">Global Proxy</label>
+        <div class="link-row">
+          <input type="text" class="proxy-input" id="adminProxy" placeholder="http://user:pass@host:port" spellcheck="false" />
+          <button class="btn-copy" id="btnSaveProxy" onclick="saveProxy()" style="background:var(--red-dim);color:var(--red)">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+          </button>
+        </div>
+        <div class="admin-status" id="proxyStatus"></div>
+      </div>
+      <div class="admin-row">
+        <label class="config-label">Change Passwords</label>
+        <div style="display:flex;gap:6px;flex-wrap:wrap">
+          <input type="password" class="proxy-input" id="newAdminPw" placeholder="New admin password" style="flex:1;min-width:140px" />
+          <input type="password" class="proxy-input" id="newUserPw" placeholder="New user password" style="flex:1;min-width:140px" />
+          <button class="btn-copy" onclick="savePasswords()" style="background:var(--red-dim);color:var(--red)">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+          </button>
+        </div>
+      </div>
+    </div>
 
     <main class="main">
       <!-- Config Bar -->
@@ -67,12 +129,12 @@
         </div>
       </div>
 
-      <!-- Proxy -->
-      <div class="input-section proxy-section">
+      <!-- Custom Proxy (for non-admin users) -->
+      <div class="input-section proxy-section" id="userProxySection">
         <div class="input-header">
-          <span class="input-title">🌐 Proxy <span class="label-hint">(Japan IP for promo)</span></span>
+          <span class="input-title">🌐 Your Proxy <span class="label-hint">(overrides global)</span></span>
         </div>
-        <input type="text" class="proxy-input" id="proxyInput" placeholder="http://user:pass@host:port" spellcheck="false" />
+        <input type="text" class="proxy-input" id="proxyInput" placeholder="Leave empty to use global proxy" spellcheck="false" />
       </div>
 
       <!-- Session Input -->

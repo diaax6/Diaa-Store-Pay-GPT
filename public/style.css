@@ -373,6 +373,58 @@ body {
 @keyframes spin { to{transform:rotate(360deg);} }
 .loader-text { font-size:0.82rem; font-weight:500; color:var(--text-2); }
 
+/* ── Login ──────────────────────────────────────────────────── */
+.login-card {
+  max-width: 360px; margin: 0 auto; padding: 32px 28px;
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--radius); backdrop-filter: blur(24px);
+  margin-top: 25vh;
+  animation: fadeIn .5s ease;
+}
+.login-title {
+  text-align: center; font-size: 0.82rem; font-weight: 700;
+  color: var(--text-2); margin-bottom: 14px; text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+.login-input {
+  width: 100%; padding: 12px 14px;
+  background: rgba(0,0,0,0.4); border: 1px solid var(--border);
+  border-radius: var(--radius-sm); color: var(--text);
+  font-family: "JetBrains Mono", monospace; font-size: 0.78rem;
+  outline: none; text-align: center;
+  transition: border-color .2s, box-shadow .2s;
+}
+.login-input::placeholder { color: var(--text-3); }
+.login-input:focus { border-color: var(--red); box-shadow: 0 0 0 3px var(--red-dim); }
+.login-error {
+  margin-top: 8px; padding: 8px 12px;
+  background: var(--error-dim); border: 1px solid rgba(239,68,68,0.25);
+  border-radius: 8px; font-size: 0.72rem; color: var(--error); text-align: center;
+}
+
+/* ── Header Actions ────────────────────────────────────────── */
+.header-actions { display: flex; gap: 6px; align-items: center; }
+
+/* ── Admin Panel ───────────────────────────────────────────── */
+.admin-panel {
+  padding: 16px; margin-bottom: 4px;
+  background: var(--surface); border: 1px solid rgba(255,51,68,0.15);
+  border-radius: var(--radius); backdrop-filter: blur(20px);
+  animation: fadeIn .3s ease;
+}
+.admin-header {
+  display: flex; justify-content: space-between; align-items: center;
+  margin-bottom: 12px; padding-bottom: 8px; border-bottom: 1px solid var(--border);
+}
+.admin-title {
+  font-size: 0.78rem; font-weight: 800; text-transform: uppercase;
+  letter-spacing: 0.04em;
+  background: var(--gradient); -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+}
+.admin-row { margin-bottom: 10px; }
+.admin-row:last-child { margin-bottom: 0; }
+.admin-status { font-size: 0.68rem; margin-top: 4px; font-weight: 600; }
+
 /* ── Footer ────────────────────────────────────────────────── */
 .footer { text-align:center; padding:24px 0 8px; font-size:0.68rem; color:var(--text-3); }
 
@@ -384,4 +436,5 @@ body {
   .config-bar { flex-direction:column; gap:10px; }
   .result-meta { grid-template-columns:1fr 1fr; }
   .toast { width:calc(100% - 32px); right:16px; left:16px; }
+  .login-card { margin-top: 15vh; }
 }
