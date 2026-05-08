@@ -1,8 +1,6 @@
 const express = require("express");
 const puppeteer = require("puppeteer");
-const fetch = require("node-fetch");
-const { HttpsProxyAgent } = require("https-proxy-agent");
-const { SocksProxyAgent } = require("socks-proxy-agent");
+const proxyChain = require("proxy-chain");
 const path = require("path");
 
 const app = express();
@@ -65,7 +63,7 @@ app.post("/api/parse-session", (req, res) => {
   });
 });
 
-// ── HYBRID: Puppeteer for Cloudflare bypass, node-fetch with proxy for API ──
+// ── Generate link via Puppeteer ───────────────────────────────────────────
 app.post("/api/generate-link", async (req, res) => {
   const { accessToken, sessionToken, offerCountry = "JP", billingCountry = "ID", mode = "hosted", proxy } = req.body;
 
@@ -101,19 +99,20 @@ app.post("/api/generate-link", async (req, res) => {
   }
 
   let browser;
+  let anonProxy = null;
   try {
-    console.log(`[${new Date().toISOString()}] HYBRID — offer:${offer} billing:${billing} mode:${mode} proxy:${proxy || "none"}`);
+    console.log(`[${new Date().toISOString()}] Launching — offer:${offer} billing:${billing} mode:${mode} proxy:${proxy || "none"}`);
 
-    // ═══════════════════════════════════════════════════════════════
-    // STEP 1: Puppeteer WITHOUT proxy — bypass Cloudflare (fast!)
-    // ═══════════════════════════════════════════════════════════════
-    console.log("  [1/3] Launching browser (no proxy) to bypass Cloudflare...");
+    const launchArgs = ["--no-sandbox", "--disable-setuid-sandbox", "--disable-blink-features=AutomationControlled"];
 
-    browser = await puppeteer.launch({
-      headless: "new",
-      args: ["--no-sandbox", "--disable-setuid-sandbox", "--disable-blink-features=AutomationControlled"],
-    });
+    // Anonymize proxy (handles auth)
+    if (proxy) {
+      anonProxy = await proxyChain.anonymizeProxy(proxy);
+      launchArgs.push(`--proxy-server=${anonProxy}`);
+      console.log(`  → Proxy: ${anonProxy}`);
+    }
 
+    browser = await puppeteer.launch({ headless: "new", args: launchArgs });
     const page = await browser.newPage();
     await page.setUserAgent(UA);
 
@@ -128,103 +127,106 @@ app.post("/api/generate-link", async (req, res) => {
       sameSite: "Lax",
     });
 
-    // Navigate to bypass Cloudflare
-    await page.goto("https://chatgpt.com", { waitUntil: "networkidle2", timeout: 30000 });
-    console.log("  [1/3] ✓ Cloudflare bypassed");
+    // Navigate (with longer timeout for proxy)
+    console.log("  → Navigating to chatgpt.com...");
+    await page.goto("https://chatgpt.com", { waitUntil: "networkidle2", timeout: 90000 });
+    console.log("  → ✓ Page loaded");
 
-    // ═══════════════════════════════════════════════════════════════
-    // STEP 2: Extract cookies from browser session
-    // ═══════════════════════════════════════════════════════════════
-    console.log("  [2/3] Extracting cookies...");
-    const cookies = await page.cookies("https://chatgpt.com");
-    const cookieStr = cookies.map(c => `${c.name}=${c.value}`).join("; ");
+    // ── Checkout API call with 45s TIMEOUT ──
+    console.log("  → Calling checkout API (45s timeout)...");
+    const result = await page.evaluate(async (token, payloadStr, timeoutMs) => {
 
-    await browser.close();
-    browser = null;
-    console.log(`  [2/3] ✓ Got ${cookies.length} cookies`);
-
-    // ═══════════════════════════════════════════════════════════════
-    // STEP 3: API call via node-fetch WITH proxy (fast, just HTTP!)
-    // ═══════════════════════════════════════════════════════════════
-    console.log("  [3/3] Calling checkout API" + (proxy ? ` through proxy...` : " directly..."));
-
-    // Create proxy agent if proxy is provided
-    let agent = null;
-    if (proxy) {
-      if (proxy.startsWith("socks")) {
-        agent = new SocksProxyAgent(proxy);
-      } else {
-        agent = new HttpsProxyAgent(proxy);
+      // Fetch with timeout using AbortController
+      async function fetchWithTimeout(url, opts, ms) {
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), ms);
+        try {
+          const res = await fetch(url, { ...opts, signal: controller.signal });
+          clearTimeout(timer);
+          return res;
+        } catch (e) {
+          clearTimeout(timer);
+          throw e;
+        }
       }
-    }
 
-    const fetchOpts = {
-      method: "POST",
-      headers: {
-        "Authorization": `Bearer ${accessToken}`,
-        "Content-Type": "application/json",
-        "User-Agent": UA,
-        "Cookie": cookieStr,
-        "Origin": "https://chatgpt.com",
-        "Referer": "https://chatgpt.com/",
-      },
-      body: JSON.stringify(payload),
-      timeout: 30000,
-    };
-    if (agent) fetchOpts.agent = agent;
+      async function tryCheckout(body) {
+        try {
+          const response = await fetchWithTimeout(
+            "https://chatgpt.com/backend-api/payments/checkout",
+            {
+              method: "POST",
+              headers: {
+                "Authorization": `Bearer ${token}`,
+                "Content-Type": "application/json",
+              },
+              body,
+            },
+            timeoutMs
+          );
+          const text = await response.text();
+          let data;
+          try { data = JSON.parse(text); } catch (e) {
+            return { error: `Non-JSON (${response.status}): ${text.substring(0, 200)}` };
+          }
+          if (!response.ok) return { error: `API ${response.status}`, details: data };
+          return { success: true, data };
+        } catch (e) {
+          if (e.name === "AbortError") return { error: "API call timed out" };
+          return { error: e.message };
+        }
+      }
 
-    // Try with promo
-    let response = await fetch("https://chatgpt.com/backend-api/payments/checkout", fetchOpts);
-    let data;
+      // Try with promo
+      let result = await tryCheckout(payloadStr);
 
-    if (!response.ok) {
       // If promo rejected, retry without
-      if (payload.promo_campaign) {
-        console.log("  [3/3] Promo rejected, retrying without promo...");
-        const payloadNoPromo = { ...payload };
-        delete payloadNoPromo.promo_campaign;
-        fetchOpts.body = JSON.stringify(payloadNoPromo);
-        response = await fetch("https://chatgpt.com/backend-api/payments/checkout", fetchOpts);
+      if (result.error && !result.success) {
+        const p = JSON.parse(payloadStr);
+        if (p.promo_campaign) {
+          delete p.promo_campaign;
+          const r2 = await tryCheckout(JSON.stringify(p));
+          if (r2.success) { r2.promoSkipped = true; return r2; }
+          if (r2.error && r2.error !== "API call timed out") return r2;
+        }
       }
-    }
 
-    const text = await response.text();
-    try { data = JSON.parse(text); } catch (e) {
-      return res.status(502).json({ error: `Non-JSON (${response.status}): ${text.substring(0, 300)}` });
-    }
+      return result;
+    }, accessToken, JSON.stringify(payload), 45000);
 
-    if (!response.ok) {
-      return res.status(502).json({ error: `API error ${response.status}`, details: data });
-    }
+    // Cleanup
+    await browser.close(); browser = null;
+    if (anonProxy) { await proxyChain.closeAnonymizedProxy(anonProxy); anonProxy = null; }
 
-    console.log("  [3/3] ✓ Checkout response received");
+    console.log("  → Result:", JSON.stringify(result, null, 2));
+
+    if (result.error) {
+      return res.status(502).json({ error: result.error, details: result.details });
+    }
 
     // Build output
-    const output = { success: true, mode, raw: data };
+    const data = result.data;
+    const output = { success: true, mode, promoSkipped: result.promoSkipped || false, raw: data };
 
     if (mode === "hosted") {
       output.link = data.url || data.stripe_hosted_url || data.checkout_url;
       output.checkout_session_id = data.checkout_session_id;
-      output.processor_entity = data.processor_entity;
     } else {
       const entity = data.processor_entity || "openai_llc";
       const sid = data.checkout_session_id;
       output.link = sid ? `https://chatgpt.com/checkout/${entity}/${sid}` : null;
       output.checkout_session_id = sid;
-      output.processor_entity = entity;
     }
 
-    if (!output.link) {
-      output.success = false;
-      output.error = "No link in response";
-    }
+    if (!output.link) { output.success = false; output.error = "No link in response"; }
 
-    console.log("  → Done:", output.link ? "✓ Link generated" : "✗ No link");
+    console.log("  →", output.link ? `✓ ${output.link.substring(0, 60)}...` : "✗ No link");
     return res.json(output);
 
   } catch (err) {
     console.error("Error:", err.message);
     if (browser) try { await browser.close(); } catch (e) {}
+    if (anonProxy) try { await proxyChain.closeAnonymizedProxy(anonProxy); } catch (e) {}
     return res.status(500).json({ error: "Error: " + err.message });
   }
 });

@@ -9,9 +9,8 @@
   },
   "dependencies": {
     "express": "^4.18.2",
-    "https-proxy-agent": "^7.0.6",
     "node-fetch": "^2.7.0",
-    "puppeteer": "^24.43.0",
-    "socks-proxy-agent": "^8.0.5"
+    "proxy-chain": "^2.5.3",
+    "puppeteer": "^24.43.0"
   }
 }
