@@ -149,7 +149,7 @@ app.post("/api/generate-link", async (req, res) => {
 
     // Navigate to chatgpt.com to pass Cloudflare
     console.log("  → Navigating to chatgpt.com...");
-    await page.goto("https://chatgpt.com", { waitUntil: "networkidle2", timeout: 30000 });
+    await page.goto("https://chatgpt.com", { waitUntil: "networkidle2", timeout: 60000 });
     console.log("  → Page loaded, running checkout script...");
 
     // Run the checkout API call from within the page context
