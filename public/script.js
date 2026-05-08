@@ -23,7 +23,8 @@
       const res = await fetch("/api/auth/me");
       const data = await res.json();
       if (data.authenticated) {
-        state.role = data.role;
+        // Always start as user — admin requires re-entering password each time
+        state.role = "user";
         showApp();
       } else {
         showLogin();
