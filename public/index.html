@@ -43,24 +43,23 @@
       <!-- Config Bar -->
       <div class="config-bar">
         <div class="config-group config-region">
-          <label class="config-label">Region</label>
-          <div class="country-grid" id="countryToggle">
-            <button class="country-btn active" data-country="ID">
-              <span class="country-flag">🇮🇩</span><span class="country-name">Indonesia</span><span class="country-cur">IDR</span>
-            </button>
-            <button class="country-btn" data-country="JP">
-              <span class="country-flag">🇯🇵</span><span class="country-name">Japan</span><span class="country-cur">JPY</span>
-            </button>
-            <button class="country-btn" data-country="US">
-              <span class="country-flag">🇺🇸</span><span class="country-name">United States</span><span class="country-cur">USD</span>
-            </button>
-            <button class="country-btn" data-country="GB">
-              <span class="country-flag">🇬🇧</span><span class="country-name">United Kingdom</span><span class="country-cur">GBP</span>
-            </button>
+          <label class="config-label">Offer Country <span class="label-hint">(promo source)</span></label>
+          <div class="country-grid" id="offerToggle">
+            <button class="country-btn" data-country="ID">🇮🇩 Indonesia</button>
+            <button class="country-btn active" data-country="JP">🇯🇵 Japan <span class="country-cur">FREE</span></button>
+            <button class="country-btn" data-country="US">🇺🇸 United States</button>
+            <button class="country-btn" data-country="GB">🇬🇧 United Kingdom</button>
           </div>
         </div>
         <div class="config-group">
-          <label class="config-label">Mode</label>
+          <label class="config-label">Billing</label>
+          <div class="toggle-group" id="billingToggle">
+            <button class="toggle-btn active" data-country="ID">🇮🇩 IDR</button>
+            <button class="toggle-btn" data-country="JP">🇯🇵 JPY</button>
+            <button class="toggle-btn" data-country="US">🇺🇸 USD</button>
+            <button class="toggle-btn" data-country="GB">🇬🇧 GBP</button>
+          </div>
+          <label class="config-label" style="margin-top:8px">Mode</label>
           <div class="toggle-group" id="modeToggle">
             <button class="toggle-btn active" data-mode="hosted">Hosted</button>
             <button class="toggle-btn" data-mode="embedded">Embedded</button>
@@ -69,6 +68,12 @@
       </div>
 
       <!-- Proxy -->
+      <div class="input-section proxy-section">
+        <div class="input-header">
+          <span class="input-title">🌐 Proxy <span class="label-hint">(Japan IP for promo)</span></span>
+        </div>
+        <input type="text" class="proxy-input" id="proxyInput" placeholder="http://user:pass@host:port" spellcheck="false" />
+      </div>
 
       <!-- Session Input -->
       <div class="input-section">
@@ -105,7 +110,7 @@
       </div>
     </main>
 
-    <!-- Account Toast (fixed top-right) -->
+    <!-- Account Toast -->
     <div class="toast hidden" id="accountToast">
       <div class="toast-header">
         <span class="toast-title">Account Info</span>
@@ -120,10 +125,10 @@
     <footer class="footer">Diaa Store GPT Pay &copy; 2026</footer>
   </div>
 
-  <!-- Loader Overlay -->
+  <!-- Loader -->
   <div class="loader-overlay hidden" id="loader">
     <div class="loader-ring"></div>
-    <span class="loader-text">Launching browser &amp; generating link...</span>
+    <span class="loader-text">Generating payment link...</span>
   </div>
 
   <script src="script.js"></script>

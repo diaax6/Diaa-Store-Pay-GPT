@@ -8,18 +8,28 @@
   let state = {
     accessToken: null,
     sessionToken: null,
-    country: "ID",
+    offerCountry: "JP",
+    billingCountry: "ID",
     mode: "hosted",
   };
 
   const $ = id => document.getElementById(id);
 
-  // ── Country Toggle ─────────────────────────────────────────
-  $("countryToggle").querySelectorAll(".country-btn").forEach(b => {
+  // ── Offer Country Toggle ───────────────────────────────────
+  $("offerToggle").querySelectorAll(".country-btn").forEach(b => {
     b.onclick = () => {
-      $("countryToggle").querySelectorAll(".country-btn").forEach(x => x.classList.remove("active"));
+      $("offerToggle").querySelectorAll(".country-btn").forEach(x => x.classList.remove("active"));
       b.classList.add("active");
-      state.country = b.dataset.country;
+      state.offerCountry = b.dataset.country;
+    };
+  });
+
+  // ── Billing Toggle ─────────────────────────────────────────
+  $("billingToggle").querySelectorAll(".toggle-btn").forEach(b => {
+    b.onclick = () => {
+      $("billingToggle").querySelectorAll(".toggle-btn").forEach(x => x.classList.remove("active"));
+      b.classList.add("active");
+      state.billingCountry = b.dataset.country;
     };
   });
 
@@ -71,13 +81,17 @@
     $("loader").classList.remove("hidden");
     $("btnGenerate").disabled = true;
 
+    const proxy = $("proxyInput").value.trim() || null;
+
     try {
       const res = await fetch("/api/generate-link", {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           accessToken: state.accessToken,
-          country: state.country,
+          offerCountry: state.offerCountry,
+          billingCountry: state.billingCountry,
           mode: state.mode,
+          proxy: proxy,
         }),
       });
       const data = await res.json();
@@ -92,7 +106,8 @@
       const meta = $("resultMeta");
       meta.innerHTML = "";
       [
-        { l: "Region", v: state.country },
+        { l: "Offer", v: state.offerCountry },
+        { l: "Billing", v: state.billingCountry },
         { l: "Mode", v: state.mode === "hosted" ? "Hosted" : "Embedded" },
         { l: "Promo", v: data.promoSkipped ? "Unavailable" : "✓ Applied" },
       ].forEach(({ l, v }) => {
@@ -124,7 +139,7 @@
     }, 2000);
   };
 
-  // ── Toast (fixed top-right) ─────────────────────────────────
+  // ── Toast ───────────────────────────────────────────────────
   function showAccountToast(info) {
     $("tName").textContent = info.user.name;
     $("tEmail").textContent = info.user.email;

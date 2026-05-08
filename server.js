@@ -64,18 +64,22 @@ app.post("/api/parse-session", (req, res) => {
 });
 
 // ── Call ChatGPT API using curl-impersonate (bypasses Cloudflare!) ─────────
-function curlCheckout(accessToken, payload) {
+function curlCheckout(accessToken, payload, proxy) {
   return new Promise((resolve, reject) => {
     const args = [
-      "-s",                     // silent
+      "-s",
       "-X", "POST",
       "-H", `Authorization: Bearer ${accessToken}`,
       "-H", "Content-Type: application/json",
       "-H", "Accept: application/json",
       "-d", JSON.stringify(payload),
       "--max-time", "20",
-      "https://chatgpt.com/backend-api/payments/checkout",
     ];
+
+    // Add proxy if provided (for Japan IP)
+    if (proxy) args.push("-x", proxy);
+
+    args.push("https://chatgpt.com/backend-api/payments/checkout");
 
     execFile(CURL_CHROME, args, { maxBuffer: 1024 * 1024 }, (err, stdout, stderr) => {
       if (err) return reject(new Error(`curl error: ${err.message}`));
@@ -83,9 +87,8 @@ function curlCheckout(accessToken, payload) {
         const data = JSON.parse(stdout);
         resolve(data);
       } catch (e) {
-        // Check if it's HTML (Cloudflare block)
         if (stdout.includes("<html")) {
-          reject(new Error("Cloudflare blocked (curl-impersonate failed)"));
+          reject(new Error("Cloudflare blocked"));
         } else {
           reject(new Error(`Invalid response: ${stdout.substring(0, 200)}`));
         }
@@ -96,52 +99,54 @@ function curlCheckout(accessToken, payload) {
 
 // ── Generate link ─────────────────────────────────────────────────────────
 app.post("/api/generate-link", async (req, res) => {
-  const { accessToken, country = "ID", mode = "hosted" } = req.body;
+  const { accessToken, offerCountry = "JP", billingCountry = "ID", mode = "hosted", proxy } = req.body;
+
+  // Back-compat
+  const offer = offerCountry || req.body.country || "JP";
+  const billing = billingCountry || req.body.country || "ID";
 
   if (!accessToken) return res.status(400).json({ error: "accessToken required" });
 
-  const cc = COUNTRIES[country];
-  if (!cc) return res.status(400).json({ error: "Unsupported country" });
+  const offerCC = COUNTRIES[offer];
+  const billingCC = COUNTRIES[billing];
+  if (!offerCC) return res.status(400).json({ error: "Unsupported offer country" });
+  if (!billingCC) return res.status(400).json({ error: "Unsupported billing country" });
 
-  // Build payload
+  // Build payload: promo from offer, billing from billing country
   let payload;
   if (mode === "hosted") {
     payload = {
       plan_name: "chatgptplusplan",
-      billing_details: { country, currency: cc.currency },
+      billing_details: { country: billing, currency: billingCC.currency },
       cancel_url: "https://chatgpt.com/#pricing",
       checkout_ui_mode: "hosted",
     };
-    if (cc.promo) payload.promo_campaign = cc.promo;
+    if (offerCC.promo) payload.promo_campaign = offerCC.promo;
   } else {
     payload = {
       entry_point: "all_plans_pricing_modal",
       plan_name: "chatgptplusplan",
-      billing_details: { country, currency: cc.currency },
+      billing_details: { country: billing, currency: billingCC.currency },
       checkout_ui_mode: "custom",
     };
-    if (cc.promo) payload.promo_campaign = cc.promo;
+    if (offerCC.promo) payload.promo_campaign = offerCC.promo;
   }
 
   try {
-    console.log(`[${new Date().toISOString()}] Generate — ${country} | ${mode}`);
+    console.log(`[${new Date().toISOString()}] Generate — offer:${offer} billing:${billing} | ${mode} | proxy:${proxy || "none"}`);
 
     // Try with promo first
     let data;
     let promoSkipped = false;
     try {
-      data = await curlCheckout(accessToken, payload);
-      // Check if response is an error
-      if (data.detail || data.error) {
-        throw new Error(data.detail || data.error);
-      }
+      data = await curlCheckout(accessToken, payload, proxy || null);
+      if (data.detail || data.error) throw new Error(data.detail || data.error);
     } catch (e) {
-      // If promo was rejected, retry without
       if (payload.promo_campaign) {
         console.log("  → Promo failed, retrying without...");
         const noPromo = { ...payload };
         delete noPromo.promo_campaign;
-        data = await curlCheckout(accessToken, noPromo);
+        data = await curlCheckout(accessToken, noPromo, proxy || null);
         if (data.detail || data.error) {
           return res.status(502).json({ error: data.detail || data.error || e.message });
         }
