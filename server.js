@@ -1,6 +1,5 @@
 const express = require("express");
-const puppeteer = require("puppeteer");
-const proxyChain = require("proxy-chain");
+const fetch = require("node-fetch");
 const path = require("path");
 
 const app = express();
@@ -63,12 +62,11 @@ app.post("/api/parse-session", (req, res) => {
   });
 });
 
-// ── Generate link via Puppeteer ───────────────────────────────────────────
+// ── Generate link — DIRECT API (no Puppeteer!) ───────────────────────────
 app.post("/api/generate-link", async (req, res) => {
-  const { accessToken, sessionToken, country = "ID", mode = "hosted", proxy } = req.body;
+  const { accessToken, country = "ID", mode = "hosted" } = req.body;
 
   if (!accessToken) return res.status(400).json({ error: "accessToken required" });
-  if (!sessionToken) return res.status(400).json({ error: "sessionToken required for browser auth" });
 
   const cc = COUNTRIES[country];
   if (!cc) return res.status(400).json({ error: "Unsupported country" });
@@ -93,110 +91,51 @@ app.post("/api/generate-link", async (req, res) => {
     if (cc.promo) payload.promo_campaign = cc.promo;
   }
 
-  let browser;
-  let anonProxy = null;
   try {
-    console.log(`[${new Date().toISOString()}] Generate — ${country} | ${mode} | proxy:${proxy || "none"}`);
+    console.log(`[${new Date().toISOString()}] Direct API — ${country} | ${mode}`);
 
-    const launchArgs = ["--no-sandbox", "--disable-setuid-sandbox", "--disable-blink-features=AutomationControlled"];
-
-    // Anonymize proxy (handles auth)
-    if (proxy) {
-      anonProxy = await proxyChain.anonymizeProxy(proxy);
-      launchArgs.push(`--proxy-server=${anonProxy}`);
-      console.log(`  → Proxy: ${anonProxy}`);
+    // Direct API call — no Puppeteer, no proxy!
+    async function callCheckout(body) {
+      const response = await fetch("https://chatgpt.com/backend-api/payments/checkout", {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${accessToken}`,
+          "Content-Type": "application/json",
+          "User-Agent": UA,
+          "Origin": "https://chatgpt.com",
+          "Referer": "https://chatgpt.com/",
+        },
+        body: JSON.stringify(body),
+        timeout: 30000,
+      });
+      const text = await response.text();
+      let data;
+      try { data = JSON.parse(text); } catch (e) {
+        return { ok: false, error: `Non-JSON (${response.status}): ${text.substring(0, 300)}` };
+      }
+      if (!response.ok) return { ok: false, status: response.status, error: `API ${response.status}`, details: data };
+      return { ok: true, data };
     }
 
-    browser = await puppeteer.launch({ headless: "new", args: launchArgs });
-    const page = await browser.newPage();
-    await page.setUserAgent(UA);
+    // Try with promo
+    let result = await callCheckout(payload);
 
-    // Set session cookie
-    await page.setCookie({
-      name: "__Secure-next-auth.session-token",
-      value: sessionToken,
-      domain: "chatgpt.com",
-      path: "/",
-      httpOnly: true,
-      secure: true,
-      sameSite: "Lax",
-    });
+    // If promo rejected, retry without
+    if (!result.ok && payload.promo_campaign) {
+      console.log("  → Promo rejected, retrying without...");
+      const noPromo = { ...payload };
+      delete noPromo.promo_campaign;
+      const r2 = await callCheckout(noPromo);
+      if (r2.ok) { result = r2; result.promoSkipped = true; }
+      else result = r2;
+    }
 
-    // Navigate
-    console.log("  → Navigating...");
-    await page.goto("https://chatgpt.com", { waitUntil: "networkidle2", timeout: 90000 });
-    console.log("  → ✓ Page loaded");
-
-    // Checkout API call with 45s timeout
-    console.log("  → Calling checkout API...");
-    const result = await page.evaluate(async (token, payloadStr, timeoutMs) => {
-
-      async function fetchWithTimeout(url, opts, ms) {
-        const controller = new AbortController();
-        const timer = setTimeout(() => controller.abort(), ms);
-        try {
-          const res = await fetch(url, { ...opts, signal: controller.signal });
-          clearTimeout(timer);
-          return res;
-        } catch (e) {
-          clearTimeout(timer);
-          throw e;
-        }
-      }
-
-      async function tryCheckout(body) {
-        try {
-          const response = await fetchWithTimeout(
-            "https://chatgpt.com/backend-api/payments/checkout",
-            {
-              method: "POST",
-              headers: {
-                "Authorization": `Bearer ${token}`,
-                "Content-Type": "application/json",
-              },
-              body,
-            },
-            timeoutMs
-          );
-          const text = await response.text();
-          let data;
-          try { data = JSON.parse(text); } catch (e) {
-            return { error: `Non-JSON (${response.status}): ${text.substring(0, 200)}` };
-          }
-          if (!response.ok) return { error: `API ${response.status}`, details: data };
-          return { success: true, data };
-        } catch (e) {
-          if (e.name === "AbortError") return { error: "API call timed out (45s)" };
-          return { error: e.message };
-        }
-      }
-
-      // Try with promo
-      let result = await tryCheckout(payloadStr);
-
-      // If promo rejected, retry without
-      if (result.error && !result.success) {
-        const p = JSON.parse(payloadStr);
-        if (p.promo_campaign) {
-          delete p.promo_campaign;
-          const r2 = await tryCheckout(JSON.stringify(p));
-          if (r2.success) { r2.promoSkipped = true; return r2; }
-          if (r2.error && r2.error !== "API call timed out (45s)") return r2;
-        }
-      }
-
-      return result;
-    }, accessToken, JSON.stringify(payload), 45000);
-
-    // Cleanup
-    await browser.close(); browser = null;
-    if (anonProxy) { await proxyChain.closeAnonymizedProxy(anonProxy); anonProxy = null; }
-
-    console.log("  → Result:", JSON.stringify(result, null, 2));
-
-    if (result.error) {
+    if (!result.ok) {
+      console.log("  → Error:", result.error);
       return res.status(502).json({ error: result.error, details: result.details });
     }
+
+    console.log("  → ✓ Success");
 
     // Build output
     const data = result.data;
@@ -214,13 +153,11 @@ app.post("/api/generate-link", async (req, res) => {
 
     if (!output.link) { output.success = false; output.error = "No link in response"; }
 
-    console.log("  →", output.link ? `✓ Link generated` : "✗ No link");
+    console.log("  →", output.link ? `✓ ${output.link.substring(0, 60)}...` : "✗ No link");
     return res.json(output);
 
   } catch (err) {
     console.error("Error:", err.message);
-    if (browser) try { await browser.close(); } catch (e) {}
-    if (anonProxy) try { await proxyChain.closeAnonymizedProxy(anonProxy); } catch (e) {}
     return res.status(500).json({ error: "Error: " + err.message });
   }
 });

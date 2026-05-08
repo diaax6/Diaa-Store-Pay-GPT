@@ -68,22 +68,16 @@
 
     showAccountToast(parseRes.info);
 
-    if (!state.sessionToken) return showError("sessionToken not found in session data.");
-
     $("loader").classList.remove("hidden");
     $("btnGenerate").disabled = true;
-
-    const proxy = $("proxyInput").value.trim() || null;
 
     try {
       const res = await fetch("/api/generate-link", {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           accessToken: state.accessToken,
-          sessionToken: state.sessionToken,
           country: state.country,
           mode: state.mode,
-          proxy: proxy,
         }),
       });
       const data = await res.json();
