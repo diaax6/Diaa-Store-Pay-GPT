@@ -11,8 +11,12 @@
 </head>
 <body>
 
+  <!-- Background -->
   <div class="space-bg">
     <canvas id="starsCanvas"></canvas>
+    <div class="dragon-layer">
+      <img src="dragon.png" alt="" class="dragon-img" />
+    </div>
     <div class="nebula nebula-1"></div>
     <div class="nebula nebula-2"></div>
   </div>
@@ -88,16 +92,10 @@
         Generate Link
       </button>
 
-      <!-- Loader -->
-      <div class="loader hidden" id="loader">
-        <div class="spinner"></div>
-        <span>Launching browser &amp; generating link...</span>
-      </div>
-
       <!-- Error -->
       <div class="error-bar hidden" id="errorBar">
-        <span id="errorMessage"></span>
-        <button class="btn-dismiss" id="btnDismiss">&times;</button>
+        <span class="error-text" id="errorMessage"></span>
+        <button class="error-dismiss" id="btnDismiss">&times;</button>
       </div>
 
       <!-- Result -->
@@ -115,17 +113,25 @@
       </div>
     </main>
 
-    <!-- Account Toast -->
-    <div class="account-toast hidden" id="accountToast">
-      <button class="toast-close" id="toastClose">&times;</button>
-      <div class="toast-title">Account Info</div>
-      <div class="toast-row"><span class="toast-label">Name</span><span id="tName">—</span></div>
-      <div class="toast-row"><span class="toast-label">Email</span><span id="tEmail">—</span></div>
-      <div class="toast-row"><span class="toast-label">Plan</span><span id="tPlan">—</span></div>
-      <div class="toast-row"><span class="toast-label">Expires</span><span id="tExpires">—</span></div>
+    <!-- Account Toast (fixed top-right) -->
+    <div class="toast hidden" id="accountToast">
+      <div class="toast-header">
+        <span class="toast-title">Account Info</span>
+        <button class="toast-close" id="toastClose">&times;</button>
+      </div>
+      <div class="toast-row"><span class="toast-label">Name</span><span class="toast-val" id="tName">—</span></div>
+      <div class="toast-row"><span class="toast-label">Email</span><span class="toast-val" id="tEmail">—</span></div>
+      <div class="toast-row"><span class="toast-label">Plan</span><span class="toast-val" id="tPlan">—</span></div>
+      <div class="toast-row"><span class="toast-label">Expires</span><span class="toast-val" id="tExpires">—</span></div>
     </div>
 
     <footer class="footer">Diaa Store GPT Pay &copy; 2026</footer>
+  </div>
+
+  <!-- Loader Overlay -->
+  <div class="loader-overlay hidden" id="loader">
+    <div class="loader-ring"></div>
+    <span class="loader-text">Launching browser &amp; generating link...</span>
   </div>
 
   <script src="script.js"></script>

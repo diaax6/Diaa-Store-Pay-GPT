@@ -14,7 +14,7 @@
 
   const $ = id => document.getElementById(id);
 
-  // ── Country Toggle (2x2 grid) ──────────────────────────────
+  // ── Country Toggle ─────────────────────────────────────────
   $("countryToggle").querySelectorAll(".country-btn").forEach(b => {
     b.onclick = () => {
       $("countryToggle").querySelectorAll(".country-btn").forEach(x => x.classList.remove("active"));
@@ -130,7 +130,7 @@
     }, 2000);
   };
 
-  // ── Toast ───────────────────────────────────────────────────
+  // ── Toast (fixed top-right) ─────────────────────────────────
   function showAccountToast(info) {
     $("tName").textContent = info.user.name;
     $("tEmail").textContent = info.user.email;
