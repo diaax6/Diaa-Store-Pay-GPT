@@ -1,5 +1,5 @@
 const express = require("express");
-const fetch = require("node-fetch");
+const { execFile } = require("child_process");
 const path = require("path");
 
 const app = express();
@@ -17,7 +17,8 @@ const COUNTRIES = {
   GB: { currency: "GBP", promo: PROMO },
 };
 
-const UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Safari/537.36";
+// Path to curl-impersonate-chrome binary
+const CURL_CHROME = "/usr/local/bin/curl_chrome116";
 
 // ── Parse session ─────────────────────────────────────────────────────────
 app.post("/api/parse-session", (req, res) => {
@@ -62,7 +63,38 @@ app.post("/api/parse-session", (req, res) => {
   });
 });
 
-// ── Generate link — DIRECT API (no Puppeteer!) ───────────────────────────
+// ── Call ChatGPT API using curl-impersonate (bypasses Cloudflare!) ─────────
+function curlCheckout(accessToken, payload) {
+  return new Promise((resolve, reject) => {
+    const args = [
+      "-s",                     // silent
+      "-X", "POST",
+      "-H", `Authorization: Bearer ${accessToken}`,
+      "-H", "Content-Type: application/json",
+      "-H", "Accept: application/json",
+      "-d", JSON.stringify(payload),
+      "--max-time", "20",
+      "https://chatgpt.com/backend-api/payments/checkout",
+    ];
+
+    execFile(CURL_CHROME, args, { maxBuffer: 1024 * 1024 }, (err, stdout, stderr) => {
+      if (err) return reject(new Error(`curl error: ${err.message}`));
+      try {
+        const data = JSON.parse(stdout);
+        resolve(data);
+      } catch (e) {
+        // Check if it's HTML (Cloudflare block)
+        if (stdout.includes("<html")) {
+          reject(new Error("Cloudflare blocked (curl-impersonate failed)"));
+        } else {
+          reject(new Error(`Invalid response: ${stdout.substring(0, 200)}`));
+        }
+      }
+    });
+  });
+}
+
+// ── Generate link ─────────────────────────────────────────────────────────
 app.post("/api/generate-link", async (req, res) => {
   const { accessToken, country = "ID", mode = "hosted" } = req.body;
 
@@ -92,54 +124,37 @@ app.post("/api/generate-link", async (req, res) => {
   }
 
   try {
-    console.log(`[${new Date().toISOString()}] Direct API — ${country} | ${mode}`);
+    console.log(`[${new Date().toISOString()}] Generate — ${country} | ${mode}`);
 
-    // Direct API call — no Puppeteer, no proxy!
-    async function callCheckout(body) {
-      const response = await fetch("https://chatgpt.com/backend-api/payments/checkout", {
-        method: "POST",
-        headers: {
-          "Authorization": `Bearer ${accessToken}`,
-          "Content-Type": "application/json",
-          "User-Agent": UA,
-          "Origin": "https://chatgpt.com",
-          "Referer": "https://chatgpt.com/",
-        },
-        body: JSON.stringify(body),
-        timeout: 30000,
-      });
-      const text = await response.text();
-      let data;
-      try { data = JSON.parse(text); } catch (e) {
-        return { ok: false, error: `Non-JSON (${response.status}): ${text.substring(0, 300)}` };
+    // Try with promo first
+    let data;
+    let promoSkipped = false;
+    try {
+      data = await curlCheckout(accessToken, payload);
+      // Check if response is an error
+      if (data.detail || data.error) {
+        throw new Error(data.detail || data.error);
       }
-      if (!response.ok) return { ok: false, status: response.status, error: `API ${response.status}`, details: data };
-      return { ok: true, data };
-    }
-
-    // Try with promo
-    let result = await callCheckout(payload);
-
-    // If promo rejected, retry without
-    if (!result.ok && payload.promo_campaign) {
-      console.log("  → Promo rejected, retrying without...");
-      const noPromo = { ...payload };
-      delete noPromo.promo_campaign;
-      const r2 = await callCheckout(noPromo);
-      if (r2.ok) { result = r2; result.promoSkipped = true; }
-      else result = r2;
-    }
-
-    if (!result.ok) {
-      console.log("  → Error:", result.error);
-      return res.status(502).json({ error: result.error, details: result.details });
+    } catch (e) {
+      // If promo was rejected, retry without
+      if (payload.promo_campaign) {
+        console.log("  → Promo failed, retrying without...");
+        const noPromo = { ...payload };
+        delete noPromo.promo_campaign;
+        data = await curlCheckout(accessToken, noPromo);
+        if (data.detail || data.error) {
+          return res.status(502).json({ error: data.detail || data.error || e.message });
+        }
+        promoSkipped = true;
+      } else {
+        return res.status(502).json({ error: e.message });
+      }
     }
 
     console.log("  → ✓ Success");
 
     // Build output
-    const data = result.data;
-    const output = { success: true, mode, promoSkipped: result.promoSkipped || false, raw: data };
+    const output = { success: true, mode, promoSkipped, raw: data };
 
     if (mode === "hosted") {
       output.link = data.url || data.stripe_hosted_url || data.checkout_url;
@@ -158,7 +173,7 @@ app.post("/api/generate-link", async (req, res) => {
 
   } catch (err) {
     console.error("Error:", err.message);
-    return res.status(500).json({ error: "Error: " + err.message });
+    return res.status(500).json({ error: err.message });
   }
 });
 
