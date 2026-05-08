@@ -1,5 +1,6 @@
 const express = require("express");
 const puppeteer = require("puppeteer");
+const proxyChain = require("proxy-chain");
 const path = require("path");
 
 const app = express();
@@ -97,26 +98,18 @@ app.post("/api/generate-link", async (req, res) => {
   }
 
   let browser;
+  let anonProxy = null;
   try {
     console.log(`[${new Date().toISOString()}] Launching browser — offer:${offer} billing:${billing} mode:${mode} proxy:${proxy || "none"}`);
 
-    // Parse proxy — extract auth if present
-    // Supports: http://user:pass@host:port  (even with commas/dots in user)
-    let proxyServer = null;
-    let proxyAuth = null;
-    if (proxy) {
-      const m = proxy.match(/^(https?:\/\/)([^:]+):([^@]+)@(.+)$/);
-      if (m) {
-        proxyAuth = { username: m[2], password: m[3] };
-        proxyServer = `${m[1]}${m[4]}`;
-        console.log(`  → Proxy: ${proxyServer} (auth: ${m[2].slice(0, 8)}...)`);
-      } else {
-        proxyServer = proxy;
-      }
-    }
-
     const launchArgs = ["--no-sandbox", "--disable-setuid-sandbox", "--disable-blink-features=AutomationControlled"];
-    if (proxyServer) launchArgs.push(`--proxy-server=${proxyServer}`);
+
+    // Use proxy-chain to handle authenticated proxies
+    if (proxy) {
+      anonProxy = await proxyChain.anonymizeProxy(proxy);
+      launchArgs.push(`--proxy-server=${anonProxy}`);
+      console.log(`  → Proxy anonymized: ${anonProxy}`);
+    }
 
     browser = await puppeteer.launch({
       headless: "new",
@@ -124,12 +117,6 @@ app.post("/api/generate-link", async (req, res) => {
     });
 
     const page = await browser.newPage();
-
-    // Authenticate proxy if credentials exist
-    if (proxyAuth) {
-      await page.authenticate(proxyAuth);
-      console.log("  → Proxy auth set");
-    }
 
     // Set user agent
     await page.setUserAgent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Safari/537.36");
@@ -191,6 +178,7 @@ app.post("/api/generate-link", async (req, res) => {
 
     await browser.close();
     browser = null;
+    if (anonProxy) { await proxyChain.closeAnonymizedProxy(anonProxy); anonProxy = null; }
 
     console.log("  → Result:", JSON.stringify(result, null, 2));
 
@@ -222,6 +210,7 @@ app.post("/api/generate-link", async (req, res) => {
   } catch (err) {
     console.error("Puppeteer error:", err.message);
     if (browser) try { await browser.close(); } catch (e) {}
+    if (anonProxy) try { await proxyChain.closeAnonymizedProxy(anonProxy); } catch (e) {}
     return res.status(500).json({ error: "Browser error: " + err.message });
   }
 });
