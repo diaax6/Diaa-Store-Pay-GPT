@@ -9,11 +9,12 @@ app.use(express.json({ limit: "10mb" }));
 app.use(express.static(path.join(__dirname, "public")));
 
 // ── Country configs ───────────────────────────────────────────────────────
+const PROMO = { promo_campaign_id: "plus-1-month-free", is_coupon_from_query_param: false };
 const COUNTRIES = {
-  ID: { currency: "IDR", promo: { promo_campaign_id: "plus-1-month-free", is_coupon_from_query_param: false } },
-  US: { currency: "USD", promo: null },
-  JP: { currency: "JPY", promo: null },
-  GB: { currency: "GBP", promo: null },
+  ID: { currency: "IDR", promo: PROMO },
+  US: { currency: "USD", promo: PROMO },
+  JP: { currency: "JPY", promo: PROMO },
+  GB: { currency: "GBP", promo: PROMO },
 };
 
 // ── Parse session ─────────────────────────────────────────────────────────
@@ -120,26 +121,39 @@ app.post("/api/generate-link", async (req, res) => {
     console.log("  → Page loaded, running checkout script...");
 
     // Run the checkout API call from within the page context
+    // Try with promo first, retry without if rejected
     const result = await page.evaluate(async (token, payloadStr) => {
-      try {
+      async function tryCheckout(body) {
         const response = await fetch("https://chatgpt.com/backend-api/payments/checkout", {
           method: "POST",
           headers: {
             "Authorization": `Bearer ${token}`,
             "Content-Type": "application/json",
           },
-          body: payloadStr,
+          body,
         });
-
         const text = await response.text();
         let data;
-        try { data = JSON.parse(text); } catch (e) { return { error: `Non-JSON response (${response.status}): ${text.substring(0, 200)}` }; }
+        try { data = JSON.parse(text); } catch (e) { return { error: `Non-JSON (${response.status}): ${text.substring(0, 200)}` }; }
+        if (!response.ok) return { error: `API error ${response.status}`, details: data, status: response.status };
+        return { success: true, data };
+      }
 
-        if (!response.ok) {
-          return { error: `API error ${response.status}`, details: data };
+      try {
+        // Try with promo
+        let result = await tryCheckout(payloadStr);
+
+        // If promo was rejected, retry without it
+        if (result.error && !result.success) {
+          const payload = JSON.parse(payloadStr);
+          if (payload.promo_campaign) {
+            delete payload.promo_campaign;
+            result = await tryCheckout(JSON.stringify(payload));
+            if (result.success) result.promoSkipped = true;
+          }
         }
 
-        return { success: true, data };
+        return result;
       } catch (e) {
         return { error: e.message };
       }
