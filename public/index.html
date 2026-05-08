@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Diaa Store — GPT Pay</title>
+  <meta name="description" content="Generate ChatGPT Plus upgrade payment links" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <!-- Background -->
+  <div class="space-bg">
+    <canvas id="starsCanvas"></canvas>
+    <div class="dragon-layer"><img src="dragon-bg.png" alt="" class="dragon-img" /></div>
+    <div class="nebula nebula-1"></div>
+    <div class="nebula nebula-2"></div>
+  </div>
+
+  <!-- Account Toast (appears on the side after parse) -->
+  <div class="toast hidden" id="accountToast">
+    <div class="toast-header">
+      <span class="toast-title">Account</span>
+      <button class="toast-close" id="toastClose">&times;</button>
+    </div>
+    <div class="toast-row"><span class="toast-label">Name</span><span class="toast-val" id="tName">—</span></div>
+    <div class="toast-row"><span class="toast-label">Email</span><span class="toast-val" id="tEmail">—</span></div>
+    <div class="toast-row"><span class="toast-label">Plan</span><span class="toast-val" id="tPlan">—</span></div>
+    <div class="toast-row"><span class="toast-label">Expires</span><span class="toast-val" id="tExpires">—</span></div>
+  </div>
+
+  <div class="app-container">
+    <!-- Header -->
+    <header class="header">
+      <div class="logo">
+        <div class="logo-icon">
+          <svg width="28" height="28" viewBox="0 0 30 30" fill="none">
+            <path d="M15 2L28 9V21L15 28L2 21V9L15 2Z" stroke="url(#g1)" stroke-width="2" fill="none"/>
+            <path d="M15 8L22 12V18L15 22L8 18V12L15 8Z" fill="url(#g1)" opacity="0.8"/>
+            <circle cx="15" cy="15" r="3" fill="#fff" opacity="0.9"/>
+            <defs><linearGradient id="g1" x1="0" y1="0" x2="30" y2="30"><stop offset="0%" stop-color="#ff3344"/><stop offset="100%" stop-color="#ff6b35"/></linearGradient></defs>
+          </svg>
+        </div>
+        <div class="logo-text-group">
+          <span class="logo-title">DIAA STORE</span>
+          <span class="logo-sub">GPT PAY</span>
+        </div>
+      </div>
+      <a href="https://chatgpt.com/api/auth/session" target="_blank" class="btn-session-link" id="sessionLink">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+        Get Session
+      </a>
+    </header>
+
+    <main class="main">
+      <!-- Config Bar -->
+      <div class="config-bar">
+        <div class="config-group config-region">
+          <label class="config-label">Region</label>
+          <div class="country-grid" id="countryToggle">
+            <button class="country-btn active" data-country="ID">
+              <span class="country-flag">🇮🇩</span><span class="country-name">Indonesia</span><span class="country-cur">IDR</span>
+            </button>
+            <button class="country-btn" data-country="JP">
+              <span class="country-flag">🇯🇵</span><span class="country-name">Japan</span><span class="country-cur">JPY</span>
+            </button>
+            <button class="country-btn" data-country="US">
+              <span class="country-flag">🇺🇸</span><span class="country-name">United States</span><span class="country-cur">USD</span>
+            </button>
+            <button class="country-btn" data-country="GB">
+              <span class="country-flag">🇬🇧</span><span class="country-name">United Kingdom</span><span class="country-cur">GBP</span>
+            </button>
+          </div>
+        </div>
+        <div class="config-group">
+          <label class="config-label">Mode</label>
+          <div class="toggle-group" id="modeToggle">
+            <button class="toggle-btn active" data-mode="hosted">Hosted</button>
+            <button class="toggle-btn" data-mode="embedded">Embedded</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Session Input -->
+      <div class="input-section">
+        <div class="input-header">
+          <span class="input-title">Session JSON</span>
+          <button class="btn-text" id="btnClear">Clear</button>
+        </div>
+        <div class="textarea-wrap">
+          <textarea id="sessionInput" class="session-input" placeholder='Paste session JSON from chatgpt.com/api/auth/session ...' spellcheck="false"></textarea>
+        </div>
+        <button class="btn btn-primary" id="btnGenerate">
+          <span class="btn-shimmer"></span>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+          Generate Link
+        </button>
+      </div>
+
+      <!-- Result -->
+      <div class="result-section hidden" id="resultSection">
+        <div class="result-label" id="resultLabel">Payment Link</div>
+        <div class="link-row">
+          <input type="text" class="link-input" id="resultLink" readonly />
+          <button class="btn-copy" id="btnCopy" title="Copy">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>
+          </button>
+        </div>
+        <div class="result-meta" id="resultMeta"></div>
+      </div>
+
+      <!-- Error -->
+      <div class="error-bar hidden" id="errorBar">
+        <span class="error-text" id="errorMessage"></span>
+        <button class="error-dismiss" id="btnDismiss">&times;</button>
+      </div>
+
+      <!-- Loader -->
+      <div class="loader-overlay hidden" id="loader">
+        <div class="loader-ring"></div>
+        <span class="loader-text">Launching browser & generating link...</span>
+      </div>
+    </main>
+
+    <footer class="footer">Diaa Store GPT Pay &copy; 2026</footer>
+  </div>
+
+  <script src="script.js"></script>
+</body>
+</html>
