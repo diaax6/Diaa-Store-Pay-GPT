@@ -100,8 +100,25 @@ app.post("/api/generate-link", async (req, res) => {
   try {
     console.log(`[${new Date().toISOString()}] Launching browser — offer:${offer} billing:${billing} mode:${mode} proxy:${proxy || "none"}`);
 
+    // Parse proxy — extract auth if present (http://user:pass@host:port → host:port + auth)
+    let proxyServer = null;
+    let proxyAuth = null;
+    if (proxy) {
+      try {
+        const proxyUrl = new URL(proxy);
+        if (proxyUrl.username && proxyUrl.password) {
+          proxyAuth = { username: decodeURIComponent(proxyUrl.username), password: decodeURIComponent(proxyUrl.password) };
+          proxyServer = `${proxyUrl.protocol}//${proxyUrl.hostname}:${proxyUrl.port}`;
+        } else {
+          proxyServer = proxy;
+        }
+      } catch (e) {
+        proxyServer = proxy; // fallback: use as-is
+      }
+    }
+
     const launchArgs = ["--no-sandbox", "--disable-setuid-sandbox", "--disable-blink-features=AutomationControlled"];
-    if (proxy) launchArgs.push(`--proxy-server=${proxy}`);
+    if (proxyServer) launchArgs.push(`--proxy-server=${proxyServer}`);
 
     browser = await puppeteer.launch({
       headless: "new",
@@ -109,6 +126,12 @@ app.post("/api/generate-link", async (req, res) => {
     });
 
     const page = await browser.newPage();
+
+    // Authenticate proxy if credentials exist
+    if (proxyAuth) {
+      await page.authenticate(proxyAuth);
+      console.log("  → Proxy auth set");
+    }
 
     // Set user agent
     await page.setUserAgent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Safari/537.36");
