@@ -100,20 +100,18 @@ app.post("/api/generate-link", async (req, res) => {
   try {
     console.log(`[${new Date().toISOString()}] Launching browser — offer:${offer} billing:${billing} mode:${mode} proxy:${proxy || "none"}`);
 
-    // Parse proxy — extract auth if present (http://user:pass@host:port → host:port + auth)
+    // Parse proxy — extract auth if present
+    // Supports: http://user:pass@host:port  (even with commas/dots in user)
     let proxyServer = null;
     let proxyAuth = null;
     if (proxy) {
-      try {
-        const proxyUrl = new URL(proxy);
-        if (proxyUrl.username && proxyUrl.password) {
-          proxyAuth = { username: decodeURIComponent(proxyUrl.username), password: decodeURIComponent(proxyUrl.password) };
-          proxyServer = `${proxyUrl.protocol}//${proxyUrl.hostname}:${proxyUrl.port}`;
-        } else {
-          proxyServer = proxy;
-        }
-      } catch (e) {
-        proxyServer = proxy; // fallback: use as-is
+      const m = proxy.match(/^(https?:\/\/)([^:]+):([^@]+)@(.+)$/);
+      if (m) {
+        proxyAuth = { username: m[2], password: m[3] };
+        proxyServer = `${m[1]}${m[4]}`;
+        console.log(`  → Proxy: ${proxyServer} (auth: ${m[2].slice(0, 8)}...)`);
+      } else {
+        proxyServer = proxy;
       }
     }
 
