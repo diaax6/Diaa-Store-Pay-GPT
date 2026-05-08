@@ -114,6 +114,23 @@ body {
   color: var(--text-3); text-transform: uppercase;
   letter-spacing: 0.1em; margin-bottom: 6px;
 }
+.label-hint {
+  font-weight: 500; text-transform: none;
+  color: var(--text-3); opacity: 0.6; letter-spacing: 0;
+}
+.proxy-section { padding: 12px 16px; }
+.proxy-input {
+  width: 100%; padding: 10px 14px;
+  background: rgba(0,0,0,0.4);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text);
+  font-family: "JetBrains Mono", monospace;
+  font-size: 0.68rem; outline: none;
+  transition: border-color .2s, box-shadow .2s;
+}
+.proxy-input::placeholder { color: var(--text-3); }
+.proxy-input:focus { border-color: var(--red); box-shadow: 0 0 0 3px var(--red-dim); }
 .toggle-group { display:flex; gap:4px; }
 .toggle-btn {
   flex:1; padding:8px 8px;

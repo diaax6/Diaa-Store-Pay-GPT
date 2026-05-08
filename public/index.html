@@ -58,13 +58,13 @@
       <!-- Config Bar -->
       <div class="config-bar">
         <div class="config-group config-region">
-          <label class="config-label">Region</label>
-          <div class="country-grid" id="countryToggle">
-            <button class="country-btn active" data-country="ID">
-              <span class="country-flag">🇮🇩</span><span class="country-name">Indonesia</span><span class="country-cur">IDR</span>
+          <label class="config-label">Offer Country <span class="label-hint">(promo source)</span></label>
+          <div class="country-grid" id="offerCountryToggle">
+            <button class="country-btn active" data-country="JP">
+              <span class="country-flag">🇯🇵</span><span class="country-name">Japan</span><span class="country-cur">FREE</span>
             </button>
-            <button class="country-btn" data-country="JP">
-              <span class="country-flag">🇯🇵</span><span class="country-name">Japan</span><span class="country-cur">JPY</span>
+            <button class="country-btn" data-country="ID">
+              <span class="country-flag">🇮🇩</span><span class="country-name">Indonesia</span><span class="country-cur">FREE</span>
             </button>
             <button class="country-btn" data-country="US">
               <span class="country-flag">🇺🇸</span><span class="country-name">United States</span><span class="country-cur">USD</span>
@@ -75,12 +75,27 @@
           </div>
         </div>
         <div class="config-group">
-          <label class="config-label">Mode</label>
+          <label class="config-label">Billing Country <span class="label-hint">(payment currency)</span></label>
+          <div class="toggle-group" id="billingToggle">
+            <button class="toggle-btn active" data-billing="ID">🇮🇩 IDR</button>
+            <button class="toggle-btn" data-billing="JP">🇯🇵 JPY</button>
+            <button class="toggle-btn" data-billing="US">🇺🇸 USD</button>
+            <button class="toggle-btn" data-billing="GB">🇬🇧 GBP</button>
+          </div>
+          <label class="config-label" style="margin-top:10px">Mode</label>
           <div class="toggle-group" id="modeToggle">
             <button class="toggle-btn active" data-mode="hosted">Hosted</button>
             <button class="toggle-btn" data-mode="embedded">Embedded</button>
           </div>
         </div>
+      </div>
+
+      <!-- Proxy (optional) -->
+      <div class="input-section proxy-section">
+        <div class="input-header">
+          <span class="input-title">🌐 Proxy <span class="label-hint">(optional — for Japan/regional offers)</span></span>
+        </div>
+        <input type="text" class="proxy-input" id="proxyInput" placeholder="socks5://ip:port  or  http://ip:port" spellcheck="false" />
       </div>
 
       <!-- Session Input -->

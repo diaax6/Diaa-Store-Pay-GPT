@@ -5,19 +5,35 @@
   !function(){const c=document.getElementById("starsCanvas");if(!c)return;const x=c.getContext("2d");let w,h,s;function r(){w=c.width=innerWidth;h=c.height=innerHeight}function m(n){s=[];for(let i=0;i<n;i++)s.push({x:Math.random()*w,y:Math.random()*h,r:Math.random()*1.4+.3,a:Math.random()*.7+.2,v:Math.random()*.3+.05,p:Math.random()*Math.PI*2})}function d(t){x.clearRect(0,0,w,h);s.forEach(p=>{x.beginPath();x.arc(p.x,p.y,p.r,0,Math.PI*2);x.fillStyle=`rgba(255,255,255,${p.a*(Math.sin(t*.001*p.v+p.p)*.3+.7)})`;x.fill()});requestAnimationFrame(d)}r();m(180);addEventListener("resize",()=>{r();m(180)});requestAnimationFrame(d)}();
 
   // ── State ───────────────────────────────────────────────────
-  let state = { accessToken: null, sessionToken: null, country: "ID", mode: "hosted" };
+  let state = {
+    accessToken: null,
+    sessionToken: null,
+    offerCountry: "JP",   // where to get promo from
+    billingCountry: "ID", // where to bill (currency)
+    mode: "hosted",
+  };
 
   const $ = id => document.getElementById(id);
 
-  // ── Config Toggles ──────────────────────────────────────────
-  $("countryToggle").querySelectorAll(".country-btn").forEach(b => {
+  // ── Offer Country Toggle (2x2 grid) ────────────────────────
+  $("offerCountryToggle").querySelectorAll(".country-btn").forEach(b => {
     b.onclick = () => {
-      $("countryToggle").querySelectorAll(".country-btn").forEach(x => x.classList.remove("active"));
+      $("offerCountryToggle").querySelectorAll(".country-btn").forEach(x => x.classList.remove("active"));
       b.classList.add("active");
-      state.country = b.dataset.country;
+      state.offerCountry = b.dataset.country;
     };
   });
 
+  // ── Billing Country Toggle ─────────────────────────────────
+  $("billingToggle").querySelectorAll(".toggle-btn").forEach(b => {
+    b.onclick = () => {
+      $("billingToggle").querySelectorAll(".toggle-btn").forEach(x => x.classList.remove("active"));
+      b.classList.add("active");
+      state.billingCountry = b.dataset.billing;
+    };
+  });
+
+  // ── Mode Toggle ────────────────────────────────────────────
   $("modeToggle").querySelectorAll(".toggle-btn").forEach(b => {
     b.onclick = () => {
       $("modeToggle").querySelectorAll(".toggle-btn").forEach(x => x.classList.remove("active"));
@@ -39,8 +55,6 @@
 
   // ── Generate ────────────────────────────────────────────────
   $("btnGenerate").onclick = generate;
-
-  // No auto-generate — user must click Generate manually
 
   async function generate() {
     const raw = $("sessionInput").value.trim();
@@ -66,16 +80,25 @@
     // Show toast
     showAccountToast(parseRes.info);
 
-    if (!state.sessionToken) return showError("sessionToken not found in session data. Make sure to paste the full JSON.");
+    if (!state.sessionToken) return showError("sessionToken not found in session data.");
 
     // Generate
     $("loader").classList.remove("hidden");
     $("btnGenerate").disabled = true;
 
+    const proxy = $("proxyInput").value.trim() || null;
+
     try {
       const res = await fetch("/api/generate-link", {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ accessToken: state.accessToken, sessionToken: state.sessionToken, country: state.country, mode: state.mode }),
+        body: JSON.stringify({
+          accessToken: state.accessToken,
+          sessionToken: state.sessionToken,
+          offerCountry: state.offerCountry,
+          billingCountry: state.billingCountry,
+          mode: state.mode,
+          proxy: proxy,
+        }),
       });
       const data = await res.json();
       $("loader").classList.add("hidden");
@@ -90,9 +113,9 @@
       const meta = $("resultMeta");
       meta.innerHTML = "";
       [
+        { l: "Offer", v: state.offerCountry + (data.promoSkipped ? " (no promo)" : " ✓ promo") },
+        { l: "Billing", v: state.billingCountry },
         { l: "Mode", v: state.mode === "hosted" ? "Hosted" : "Embedded" },
-        { l: "Region", v: state.country },
-        { l: "Session", v: (data.checkout_session_id || "—").slice(0, 20) + "..." },
       ].forEach(({ l, v }) => {
         const d = document.createElement("div");
         d.className = "meta-chip";

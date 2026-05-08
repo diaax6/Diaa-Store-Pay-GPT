@@ -62,41 +62,50 @@ app.post("/api/parse-session", (req, res) => {
 
 // ── Generate link via Puppeteer ───────────────────────────────────────────
 app.post("/api/generate-link", async (req, res) => {
-  const { accessToken, sessionToken, country = "ID", mode = "hosted" } = req.body;
+  const { accessToken, sessionToken, offerCountry = "JP", billingCountry = "ID", mode = "hosted", proxy } = req.body;
+
+  // Back-compat: also accept old "country" field
+  const offer = offerCountry || req.body.country || "JP";
+  const billing = billingCountry || req.body.country || "ID";
 
   if (!accessToken) return res.status(400).json({ error: "accessToken required" });
   if (!sessionToken) return res.status(400).json({ error: "sessionToken required for browser auth" });
 
-  const cc = COUNTRIES[country];
-  if (!cc) return res.status(400).json({ error: "Unsupported country" });
+  const offerCC = COUNTRIES[offer];
+  const billingCC = COUNTRIES[billing];
+  if (!offerCC) return res.status(400).json({ error: "Unsupported offer country" });
+  if (!billingCC) return res.status(400).json({ error: "Unsupported billing country" });
 
-  // Build payload
+  // Build payload: promo from offerCountry, billing from billingCountry
   let payload;
   if (mode === "hosted") {
     payload = {
       plan_name: "chatgptplusplan",
-      billing_details: { country, currency: cc.currency },
+      billing_details: { country: billing, currency: billingCC.currency },
       cancel_url: "https://chatgpt.com/#pricing",
       checkout_ui_mode: "hosted",
     };
-    if (cc.promo) payload.promo_campaign = cc.promo;
+    if (offerCC.promo) payload.promo_campaign = offerCC.promo;
   } else {
     payload = {
       entry_point: "all_plans_pricing_modal",
       plan_name: "chatgptplusplan",
-      billing_details: { country, currency: cc.currency },
+      billing_details: { country: billing, currency: billingCC.currency },
       checkout_ui_mode: "custom",
     };
-    if (cc.promo) payload.promo_campaign = cc.promo;
+    if (offerCC.promo) payload.promo_campaign = offerCC.promo;
   }
 
   let browser;
   try {
-    console.log(`[${new Date().toISOString()}] Launching browser for ${mode} | ${country}...`);
+    console.log(`[${new Date().toISOString()}] Launching browser — offer:${offer} billing:${billing} mode:${mode} proxy:${proxy || "none"}`);
+
+    const launchArgs = ["--no-sandbox", "--disable-setuid-sandbox", "--disable-blink-features=AutomationControlled"];
+    if (proxy) launchArgs.push(`--proxy-server=${proxy}`);
 
     browser = await puppeteer.launch({
       headless: "new",
-      args: ["--no-sandbox", "--disable-setuid-sandbox", "--disable-blink-features=AutomationControlled"],
+      args: launchArgs,
     });
 
     const page = await browser.newPage();
