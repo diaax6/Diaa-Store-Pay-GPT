@@ -19,6 +19,7 @@ function saveConfig(cfg) {
 
 // Sessions (in-memory)
 const sessions = new Map(); // token → { role: "admin"|"user", createdAt }
+const SESSION_TTL = 60 * 60 * 1000; // 1 hour
 
 function createSession(role) {
   const token = crypto.randomBytes(32).toString("hex");
@@ -29,7 +30,13 @@ function createSession(role) {
 function getSession(req) {
   const token = req.cookies?.["session"];
   if (!token) return null;
-  return sessions.get(token) || null;
+  const s = sessions.get(token);
+  if (!s) return null;
+  if (Date.now() - s.createdAt > SESSION_TTL) {
+    sessions.delete(token);
+    return null;
+  }
+  return s;
 }
 
 // Cookie parser middleware (simple)
@@ -75,7 +82,7 @@ app.post("/api/auth/login", (req, res) => {
   if (!role) return res.status(401).json({ error: "Invalid password" });
 
   const token = createSession(role);
-  res.setHeader("Set-Cookie", `session=${token}; Path=/; HttpOnly; SameSite=Lax; Max-Age=86400`);
+  res.setHeader("Set-Cookie", `session=${token}; Path=/; HttpOnly; SameSite=Lax; Max-Age=3600`);
   return res.json({ success: true, role });
 });
 
