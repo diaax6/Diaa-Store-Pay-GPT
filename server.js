@@ -75,15 +75,28 @@ app.post("/api/auth/login", (req, res) => {
   const { password } = req.body;
   const cfg = loadConfig();
 
-  let role = null;
-  if (password === cfg.adminPassword) role = "admin";
-  else if (password === cfg.userPassword) role = "user";
+  // Site login — user password only
+  if (password !== cfg.userPassword) return res.status(401).json({ error: "Invalid password" });
 
-  if (!role) return res.status(401).json({ error: "Invalid password" });
-
-  const token = createSession(role);
+  const token = createSession("user");
   res.setHeader("Set-Cookie", `session=${token}; Path=/; HttpOnly; SameSite=Lax; Max-Age=3600`);
-  return res.json({ success: true, role });
+  return res.json({ success: true, role: "user" });
+});
+
+// Admin unlock (separate password)
+app.post("/api/auth/admin", (req, res) => {
+  const session = getSession(req);
+  if (!session) return res.status(401).json({ error: "Not authenticated" });
+
+  const { password } = req.body;
+  const cfg = loadConfig();
+
+  if (password !== cfg.adminPassword) return res.status(401).json({ error: "Invalid admin password" });
+
+  // Upgrade session to admin
+  const token = req.cookies?.["session"];
+  if (token) sessions.set(token, { ...session, role: "admin" });
+  return res.json({ success: true, role: "admin" });
 });
 
 app.post("/api/auth/logout", (req, res) => {

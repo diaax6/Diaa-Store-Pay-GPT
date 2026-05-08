@@ -425,6 +425,14 @@ body {
 .admin-row:last-child { margin-bottom: 0; }
 .admin-status { font-size: 0.68rem; margin-top: 4px; font-weight: 600; }
 
+/* ── Admin Modal ───────────────────────────────────────────── */
+.admin-modal-overlay {
+  position: fixed; inset: 0; z-index: 500;
+  background: rgba(6,6,13,0.85); backdrop-filter: blur(8px);
+  display: flex; align-items: center; justify-content: center;
+  animation: fadeIn .3s ease;
+}
+
 /* ── Footer ────────────────────────────────────────────────── */
 .footer { text-align:center; padding:24px 0 8px; font-size:0.68rem; color:var(--text-3); }
 

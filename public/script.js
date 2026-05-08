@@ -41,11 +41,8 @@
     $("loginScreen").classList.add("hidden");
     $("mainApp").classList.remove("hidden");
 
-    // Show admin button for admins
-    if (state.role === "admin") {
-      $("btnAdminPanel").classList.remove("hidden");
-      loadAdminConfig();
-    }
+    // If already admin, load config
+    if (state.role === "admin") loadAdminConfig();
   }
 
   // Login
@@ -93,8 +90,49 @@
   // ADMIN
   // ══════════════════════════════════════════════════════════════
   window.toggleAdmin = function () {
-    $("adminPanel").classList.toggle("hidden");
+    if (state.role === "admin") {
+      // Already admin, toggle panel
+      $("adminPanel").classList.toggle("hidden");
+    } else {
+      // Show admin password modal
+      $("adminModal").classList.remove("hidden");
+      $("adminModalPassword").value = "";
+      $("adminModalError").classList.add("hidden");
+      $("adminModalPassword").focus();
+    }
   };
+
+  window.closeAdminModal = function () {
+    $("adminModal").classList.add("hidden");
+  };
+
+  window.doAdminLogin = async function () {
+    const pw = $("adminModalPassword").value.trim();
+    if (!pw) return;
+    try {
+      const res = await fetch("/api/auth/admin", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ password: pw }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        $("adminModalError").textContent = data.error || "Invalid password";
+        $("adminModalError").classList.remove("hidden");
+        return;
+      }
+      state.role = "admin";
+      $("adminModal").classList.add("hidden");
+      await loadAdminConfig();
+      $("adminPanel").classList.remove("hidden");
+    } catch (e) {
+      $("adminModalError").textContent = "Connection error";
+      $("adminModalError").classList.remove("hidden");
+    }
+  };
+
+  $("adminModalPassword").addEventListener("keydown", (e) => {
+    if (e.key === "Enter") doAdminLogin();
+  });
 
   async function loadAdminConfig() {
     try {
