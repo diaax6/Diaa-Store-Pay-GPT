@@ -1,6 +1,8 @@
 const express = require("express");
 const puppeteer = require("puppeteer");
-const proxyChain = require("proxy-chain");
+const fetch = require("node-fetch");
+const { HttpsProxyAgent } = require("https-proxy-agent");
+const { SocksProxyAgent } = require("socks-proxy-agent");
 const path = require("path");
 
 const app = express();
@@ -17,6 +19,8 @@ const COUNTRIES = {
   JP: { currency: "JPY", promo: PROMO },
   GB: { currency: "GBP", promo: PROMO },
 };
+
+const UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Safari/537.36";
 
 // ── Parse session ─────────────────────────────────────────────────────────
 app.post("/api/parse-session", (req, res) => {
@@ -61,11 +65,10 @@ app.post("/api/parse-session", (req, res) => {
   });
 });
 
-// ── Generate link via Puppeteer ───────────────────────────────────────────
+// ── HYBRID: Puppeteer for Cloudflare bypass, node-fetch with proxy for API ──
 app.post("/api/generate-link", async (req, res) => {
   const { accessToken, sessionToken, offerCountry = "JP", billingCountry = "ID", mode = "hosted", proxy } = req.body;
 
-  // Back-compat: also accept old "country" field
   const offer = offerCountry || req.body.country || "JP";
   const billing = billingCountry || req.body.country || "ID";
 
@@ -77,7 +80,7 @@ app.post("/api/generate-link", async (req, res) => {
   if (!offerCC) return res.status(400).json({ error: "Unsupported offer country" });
   if (!billingCC) return res.status(400).json({ error: "Unsupported billing country" });
 
-  // Build payload: promo from offerCountry, billing from billingCountry
+  // Build payload
   let payload;
   if (mode === "hosted") {
     payload = {
@@ -98,30 +101,23 @@ app.post("/api/generate-link", async (req, res) => {
   }
 
   let browser;
-  let anonProxy = null;
   try {
-    console.log(`[${new Date().toISOString()}] Launching browser — offer:${offer} billing:${billing} mode:${mode} proxy:${proxy || "none"}`);
+    console.log(`[${new Date().toISOString()}] HYBRID — offer:${offer} billing:${billing} mode:${mode} proxy:${proxy || "none"}`);
 
-    const launchArgs = ["--no-sandbox", "--disable-setuid-sandbox", "--disable-blink-features=AutomationControlled"];
-
-    // Use proxy-chain to handle authenticated proxies
-    if (proxy) {
-      anonProxy = await proxyChain.anonymizeProxy(proxy);
-      launchArgs.push(`--proxy-server=${anonProxy}`);
-      console.log(`  → Proxy anonymized: ${anonProxy}`);
-    }
+    // ═══════════════════════════════════════════════════════════════
+    // STEP 1: Puppeteer WITHOUT proxy — bypass Cloudflare (fast!)
+    // ═══════════════════════════════════════════════════════════════
+    console.log("  [1/3] Launching browser (no proxy) to bypass Cloudflare...");
 
     browser = await puppeteer.launch({
       headless: "new",
-      args: launchArgs,
+      args: ["--no-sandbox", "--disable-setuid-sandbox", "--disable-blink-features=AutomationControlled"],
     });
 
     const page = await browser.newPage();
+    await page.setUserAgent(UA);
 
-    // Set user agent
-    await page.setUserAgent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Safari/537.36");
-
-    // Set the session cookie BEFORE navigating
+    // Set session cookie
     await page.setCookie({
       name: "__Secure-next-auth.session-token",
       value: sessionToken,
@@ -132,61 +128,78 @@ app.post("/api/generate-link", async (req, res) => {
       sameSite: "Lax",
     });
 
-    // Navigate to chatgpt.com to pass Cloudflare
-    console.log("  → Navigating to chatgpt.com...");
-    await page.goto("https://chatgpt.com", { waitUntil: "networkidle2", timeout: 60000 });
-    console.log("  → Page loaded, running checkout script...");
+    // Navigate to bypass Cloudflare
+    await page.goto("https://chatgpt.com", { waitUntil: "networkidle2", timeout: 30000 });
+    console.log("  [1/3] ✓ Cloudflare bypassed");
 
-    // Run the checkout API call from within the page context
-    // Try with promo first, retry without if rejected
-    const result = await page.evaluate(async (token, payloadStr) => {
-      async function tryCheckout(body) {
-        const response = await fetch("https://chatgpt.com/backend-api/payments/checkout", {
-          method: "POST",
-          headers: {
-            "Authorization": `Bearer ${token}`,
-            "Content-Type": "application/json",
-          },
-          body,
-        });
-        const text = await response.text();
-        let data;
-        try { data = JSON.parse(text); } catch (e) { return { error: `Non-JSON (${response.status}): ${text.substring(0, 200)}` }; }
-        if (!response.ok) return { error: `API error ${response.status}`, details: data, status: response.status };
-        return { success: true, data };
-      }
-
-      try {
-        // Try with promo
-        let result = await tryCheckout(payloadStr);
-
-        // If promo was rejected, retry without it
-        if (result.error && !result.success) {
-          const payload = JSON.parse(payloadStr);
-          if (payload.promo_campaign) {
-            delete payload.promo_campaign;
-            result = await tryCheckout(JSON.stringify(payload));
-            if (result.success) result.promoSkipped = true;
-          }
-        }
-
-        return result;
-      } catch (e) {
-        return { error: e.message };
-      }
-    }, accessToken, JSON.stringify(payload));
+    // ═══════════════════════════════════════════════════════════════
+    // STEP 2: Extract cookies from browser session
+    // ═══════════════════════════════════════════════════════════════
+    console.log("  [2/3] Extracting cookies...");
+    const cookies = await page.cookies("https://chatgpt.com");
+    const cookieStr = cookies.map(c => `${c.name}=${c.value}`).join("; ");
 
     await browser.close();
     browser = null;
-    if (anonProxy) { await proxyChain.closeAnonymizedProxy(anonProxy); anonProxy = null; }
+    console.log(`  [2/3] ✓ Got ${cookies.length} cookies`);
 
-    console.log("  → Result:", JSON.stringify(result, null, 2));
+    // ═══════════════════════════════════════════════════════════════
+    // STEP 3: API call via node-fetch WITH proxy (fast, just HTTP!)
+    // ═══════════════════════════════════════════════════════════════
+    console.log("  [3/3] Calling checkout API" + (proxy ? ` through proxy...` : " directly..."));
 
-    if (result.error) {
-      return res.status(502).json({ error: result.error, details: result.details });
+    // Create proxy agent if proxy is provided
+    let agent = null;
+    if (proxy) {
+      if (proxy.startsWith("socks")) {
+        agent = new SocksProxyAgent(proxy);
+      } else {
+        agent = new HttpsProxyAgent(proxy);
+      }
     }
 
-    const data = result.data;
+    const fetchOpts = {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${accessToken}`,
+        "Content-Type": "application/json",
+        "User-Agent": UA,
+        "Cookie": cookieStr,
+        "Origin": "https://chatgpt.com",
+        "Referer": "https://chatgpt.com/",
+      },
+      body: JSON.stringify(payload),
+      timeout: 30000,
+    };
+    if (agent) fetchOpts.agent = agent;
+
+    // Try with promo
+    let response = await fetch("https://chatgpt.com/backend-api/payments/checkout", fetchOpts);
+    let data;
+
+    if (!response.ok) {
+      // If promo rejected, retry without
+      if (payload.promo_campaign) {
+        console.log("  [3/3] Promo rejected, retrying without promo...");
+        const payloadNoPromo = { ...payload };
+        delete payloadNoPromo.promo_campaign;
+        fetchOpts.body = JSON.stringify(payloadNoPromo);
+        response = await fetch("https://chatgpt.com/backend-api/payments/checkout", fetchOpts);
+      }
+    }
+
+    const text = await response.text();
+    try { data = JSON.parse(text); } catch (e) {
+      return res.status(502).json({ error: `Non-JSON (${response.status}): ${text.substring(0, 300)}` });
+    }
+
+    if (!response.ok) {
+      return res.status(502).json({ error: `API error ${response.status}`, details: data });
+    }
+
+    console.log("  [3/3] ✓ Checkout response received");
+
+    // Build output
     const output = { success: true, mode, raw: data };
 
     if (mode === "hosted") {
@@ -206,12 +219,13 @@ app.post("/api/generate-link", async (req, res) => {
       output.error = "No link in response";
     }
 
+    console.log("  → Done:", output.link ? "✓ Link generated" : "✗ No link");
     return res.json(output);
+
   } catch (err) {
-    console.error("Puppeteer error:", err.message);
+    console.error("Error:", err.message);
     if (browser) try { await browser.close(); } catch (e) {}
-    if (anonProxy) try { await proxyChain.closeAnonymizedProxy(anonProxy); } catch (e) {}
-    return res.status(500).json({ error: "Browser error: " + err.message });
+    return res.status(500).json({ error: "Error: " + err.message });
   }
 });
 
