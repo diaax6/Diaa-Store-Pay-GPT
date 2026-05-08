@@ -65,43 +65,38 @@ app.post("/api/parse-session", (req, res) => {
 
 // ── Generate link via Puppeteer ───────────────────────────────────────────
 app.post("/api/generate-link", async (req, res) => {
-  const { accessToken, sessionToken, offerCountry = "JP", billingCountry = "ID", mode = "hosted", proxy } = req.body;
-
-  const offer = offerCountry || req.body.country || "JP";
-  const billing = billingCountry || req.body.country || "ID";
+  const { accessToken, sessionToken, country = "ID", mode = "hosted", proxy } = req.body;
 
   if (!accessToken) return res.status(400).json({ error: "accessToken required" });
   if (!sessionToken) return res.status(400).json({ error: "sessionToken required for browser auth" });
 
-  const offerCC = COUNTRIES[offer];
-  const billingCC = COUNTRIES[billing];
-  if (!offerCC) return res.status(400).json({ error: "Unsupported offer country" });
-  if (!billingCC) return res.status(400).json({ error: "Unsupported billing country" });
+  const cc = COUNTRIES[country];
+  if (!cc) return res.status(400).json({ error: "Unsupported country" });
 
   // Build payload
   let payload;
   if (mode === "hosted") {
     payload = {
       plan_name: "chatgptplusplan",
-      billing_details: { country: billing, currency: billingCC.currency },
+      billing_details: { country, currency: cc.currency },
       cancel_url: "https://chatgpt.com/#pricing",
       checkout_ui_mode: "hosted",
     };
-    if (offerCC.promo) payload.promo_campaign = offerCC.promo;
+    if (cc.promo) payload.promo_campaign = cc.promo;
   } else {
     payload = {
       entry_point: "all_plans_pricing_modal",
       plan_name: "chatgptplusplan",
-      billing_details: { country: billing, currency: billingCC.currency },
+      billing_details: { country, currency: cc.currency },
       checkout_ui_mode: "custom",
     };
-    if (offerCC.promo) payload.promo_campaign = offerCC.promo;
+    if (cc.promo) payload.promo_campaign = cc.promo;
   }
 
   let browser;
   let anonProxy = null;
   try {
-    console.log(`[${new Date().toISOString()}] Launching — offer:${offer} billing:${billing} mode:${mode} proxy:${proxy || "none"}`);
+    console.log(`[${new Date().toISOString()}] Generate — ${country} | ${mode} | proxy:${proxy || "none"}`);
 
     const launchArgs = ["--no-sandbox", "--disable-setuid-sandbox", "--disable-blink-features=AutomationControlled"];
 
@@ -127,16 +122,15 @@ app.post("/api/generate-link", async (req, res) => {
       sameSite: "Lax",
     });
 
-    // Navigate (with longer timeout for proxy)
-    console.log("  → Navigating to chatgpt.com...");
+    // Navigate
+    console.log("  → Navigating...");
     await page.goto("https://chatgpt.com", { waitUntil: "networkidle2", timeout: 90000 });
     console.log("  → ✓ Page loaded");
 
-    // ── Checkout API call with 45s TIMEOUT ──
-    console.log("  → Calling checkout API (45s timeout)...");
+    // Checkout API call with 45s timeout
+    console.log("  → Calling checkout API...");
     const result = await page.evaluate(async (token, payloadStr, timeoutMs) => {
 
-      // Fetch with timeout using AbortController
       async function fetchWithTimeout(url, opts, ms) {
         const controller = new AbortController();
         const timer = setTimeout(() => controller.abort(), ms);
@@ -172,7 +166,7 @@ app.post("/api/generate-link", async (req, res) => {
           if (!response.ok) return { error: `API ${response.status}`, details: data };
           return { success: true, data };
         } catch (e) {
-          if (e.name === "AbortError") return { error: "API call timed out" };
+          if (e.name === "AbortError") return { error: "API call timed out (45s)" };
           return { error: e.message };
         }
       }
@@ -187,7 +181,7 @@ app.post("/api/generate-link", async (req, res) => {
           delete p.promo_campaign;
           const r2 = await tryCheckout(JSON.stringify(p));
           if (r2.success) { r2.promoSkipped = true; return r2; }
-          if (r2.error && r2.error !== "API call timed out") return r2;
+          if (r2.error && r2.error !== "API call timed out (45s)") return r2;
         }
       }
 
@@ -220,7 +214,7 @@ app.post("/api/generate-link", async (req, res) => {
 
     if (!output.link) { output.success = false; output.error = "No link in response"; }
 
-    console.log("  →", output.link ? `✓ ${output.link.substring(0, 60)}...` : "✗ No link");
+    console.log("  →", output.link ? `✓ Link generated` : "✗ No link");
     return res.json(output);
 
   } catch (err) {

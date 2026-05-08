@@ -8,28 +8,18 @@
   let state = {
     accessToken: null,
     sessionToken: null,
-    offerCountry: "JP",   // where to get promo from
-    billingCountry: "ID", // where to bill (currency)
+    country: "ID",
     mode: "hosted",
   };
 
   const $ = id => document.getElementById(id);
 
-  // ── Offer Country Toggle (2x2 grid) ────────────────────────
-  $("offerCountryToggle").querySelectorAll(".country-btn").forEach(b => {
+  // ── Country Toggle (2x2 grid) ──────────────────────────────
+  $("countryToggle").querySelectorAll(".country-btn").forEach(b => {
     b.onclick = () => {
-      $("offerCountryToggle").querySelectorAll(".country-btn").forEach(x => x.classList.remove("active"));
+      $("countryToggle").querySelectorAll(".country-btn").forEach(x => x.classList.remove("active"));
       b.classList.add("active");
-      state.offerCountry = b.dataset.country;
-    };
-  });
-
-  // ── Billing Country Toggle ─────────────────────────────────
-  $("billingToggle").querySelectorAll(".toggle-btn").forEach(b => {
-    b.onclick = () => {
-      $("billingToggle").querySelectorAll(".toggle-btn").forEach(x => x.classList.remove("active"));
-      b.classList.add("active");
-      state.billingCountry = b.dataset.billing;
+      state.country = b.dataset.country;
     };
   });
 
@@ -60,7 +50,6 @@
     const raw = $("sessionInput").value.trim();
     if (!raw) return showError("Paste your session JSON first.");
 
-    // Parse
     $("errorBar").classList.add("hidden");
     $("resultSection").classList.add("hidden");
 
@@ -77,12 +66,10 @@
     state.accessToken = parseRes.info.accessToken;
     state.sessionToken = parseRes.info.sessionToken;
 
-    // Show toast
     showAccountToast(parseRes.info);
 
     if (!state.sessionToken) return showError("sessionToken not found in session data.");
 
-    // Generate
     $("loader").classList.remove("hidden");
     $("btnGenerate").disabled = true;
 
@@ -94,8 +81,7 @@
         body: JSON.stringify({
           accessToken: state.accessToken,
           sessionToken: state.sessionToken,
-          offerCountry: state.offerCountry,
-          billingCountry: state.billingCountry,
+          country: state.country,
           mode: state.mode,
           proxy: proxy,
         }),
@@ -106,16 +92,15 @@
 
       if (!res.ok || !data.success) return showError(data.error || "Generation failed.");
 
-      // Show result
       $("resultLabel").textContent = state.mode === "hosted" ? "Hosted Payment Link" : "Embedded Checkout Link";
       $("resultLink").value = data.link;
 
       const meta = $("resultMeta");
       meta.innerHTML = "";
       [
-        { l: "Offer", v: state.offerCountry + (data.promoSkipped ? " (no promo)" : " ✓ promo") },
-        { l: "Billing", v: state.billingCountry },
+        { l: "Region", v: state.country },
         { l: "Mode", v: state.mode === "hosted" ? "Hosted" : "Embedded" },
+        { l: "Promo", v: data.promoSkipped ? "Unavailable" : "✓ Applied" },
       ].forEach(({ l, v }) => {
         const d = document.createElement("div");
         d.className = "meta-chip";
@@ -149,15 +134,12 @@
   function showAccountToast(info) {
     $("tName").textContent = info.user.name;
     $("tEmail").textContent = info.user.email;
-
     const plan = (info.account.planType || "free").toLowerCase();
     const cls = plan === "plus" ? "plan-plus" : plan === "pro" ? "plan-pro" : "plan-free";
     $("tPlan").innerHTML = `<span class="plan-badge ${cls}">${plan.toUpperCase()}</span>`;
-
     $("tExpires").textContent = info.expires
       ? new Date(info.expires).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
       : "—";
-
     $("accountToast").classList.remove("hidden");
   }
 
