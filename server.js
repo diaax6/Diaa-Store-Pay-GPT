@@ -146,6 +146,8 @@ const COUNTRIES = {
   US: { currency: "USD", promo: PROMO },
   JP: { currency: "JPY", promo: PROMO },
   GB: { currency: "GBP", promo: PROMO },
+  BR: { currency: "BRL", promo: PROMO },
+  IN: { currency: "INR", promo: PROMO },
 };
 
 // ── Parse session ─────────────────────────────────────────────────────────
